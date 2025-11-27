@@ -1,6 +1,6 @@
 /* FILENAME: core.js
    AUTHOR: Sam Bennett (System Architect) & Jen (Visionary)
-   VERSION: 4.4 (The Clean Integer Update)
+   VERSION: 5.0 (The Cloud Protocol)
 */
 
 // --- 1. STORAGE KEYS ---
@@ -8,6 +8,7 @@ const STORAGE_KEY_LOGS = "LifeHub_Measurements";
 const STORAGE_KEY_GOALS = "LifeHub_Goals";
 const STORAGE_KEY_GALLERY = "LifeHub_Gallery";
 const STORAGE_KEY_USER = "LifeHub_RPG_User"; 
+const STORAGE_KEY_TEMPLATES = "lh_templates"; // Added for Sync
 
 // --- 2. CONFIGURATION & RULES ---
 const SYSTEM_CONFIG = {
@@ -96,7 +97,7 @@ if (!UserProfile.schedule) UserProfile.schedule = {};
 // Run Weekly Grace Reset Check on Load
 checkGraceReset();
 
-console.log("LifeHub Core v4.4: INTEGERS ONLY");
+console.log("LifeHub Core v5.0: CLOUD CONNECTED");
 
 // --- 4. THE LOGIC ENGINES ---
 
@@ -179,7 +180,7 @@ function processWorkoutSession(activeWorkout, isLuteal, isComplete) {
         const multi = SYSTEM_CONFIG.lutealMultiplier;
         // Multiply first, we round at the end
         report.totalSessionMGP = report.totalSessionMGP * multi;
-        report.baseFP = Math.round(report.baseFP * multi); // Round Base FP immediately
+        report.baseFP = Math.round(report.baseFP * multi); 
         
         for (let m in report.earnedMGP) {
             report.earnedMGP[m] = report.earnedMGP[m] * multi;
@@ -192,14 +193,12 @@ function processWorkoutSession(activeWorkout, isLuteal, isComplete) {
     }
 
     // 3. CLEAN UP MGP (ROUNDING STEP)
-    // We round all MGP values now so the rest of the system sees Integers
     report.totalSessionMGP = Math.round(report.totalSessionMGP);
     for (let m in report.earnedMGP) {
         report.earnedMGP[m] = Math.round(report.earnedMGP[m]);
     }
 
     // 4. Currency Exchange (MGP -> FP)
-    // Now we divide the rounded MGP
     report.effortFP = Math.round(report.totalSessionMGP / SYSTEM_CONFIG.exchangeRate);
 
     // 5. Streak Logic
@@ -221,7 +220,7 @@ function processWorkoutSession(activeWorkout, isLuteal, isComplete) {
         });
     }
 
-    // 6. Totals (Already Integers, but Math.round ensures safety)
+    // 6. Totals
     report.totalFP = Math.round(report.baseFP + report.effortFP + report.streakFP);
     report.earnedPrestige = Math.round(report.totalFP * SYSTEM_CONFIG.prestigeRatio);
 
@@ -232,7 +231,6 @@ function processWorkoutSession(activeWorkout, isLuteal, isComplete) {
         type: 'workout', highlight: false
     });
 
-    // Log Muscle Specifics (Now Clean Integers)
     for (const [muscle, points] of Object.entries(report.earnedMGP)) {
         if(points > 0) {
             report.generatedLogs.push({
@@ -242,7 +240,6 @@ function processWorkoutSession(activeWorkout, isLuteal, isComplete) {
         }
     }
 
-    // Log Prestige
     if(report.earnedPrestige > 0) {
         report.generatedLogs.push({
             text: `[+${report.earnedPrestige} PRESTIGE] Funds Acquired`,
@@ -308,13 +305,11 @@ function updateSystem(report) {
     UserProfile.lastWorkout = now.toISOString();
 
     // 4. SAVE LOGS TO JOURNAL
-    // Add timestamp to generated logs and push to history
     report.generatedLogs.forEach(log => {
         log.date = timestamp;
         UserProfile.systemLogs.push(log);
     });
 
-    // Cap log size (keep last 100 entries)
     if(UserProfile.systemLogs.length > 100) {
         UserProfile.systemLogs = UserProfile.systemLogs.slice(-100);
     }
@@ -336,19 +331,15 @@ function getLevelStatus(currentPoints, levelTable, gateCheck = null) {
     for (let i = 0; i < levelTable.length - 1; i++) {
         const nextTier = levelTable[i+1];
         if (currentPoints >= nextTier.req) {
-            // Gatekeeper Check
             let isGated = false;
             if (nextTier.gate && gateCheck) {
                 const mStat = UserProfile.muscles[nextTier.gate.muscle] || { level: 1 };
                 if (mStat.level < nextTier.gate.lvl) isGated = true;
             }
-            
             if (isGated) {
-                // XP Banking Mode
                 isCapped = true;
                 return { level: levelTable[i].lvl, pct: 100, currentPoints: currentPoints, nextReq: nextTier.req, isCapped: true };
             }
-            
             currentLvl = nextTier.lvl;
             prevThreshold = nextTier.req;
             tableIndex = i + 1;
@@ -358,15 +349,12 @@ function getLevelStatus(currentPoints, levelTable, gateCheck = null) {
         }
     }
 
-    // Infinite Scaling
     if (tableIndex === levelTable.length - 1 && !isCapped) {
         const lastDefined = levelTable[levelTable.length - 1];
         const extraPoints = currentPoints - lastDefined.req;
         const pointsPerInfiniteLevel = 1000; 
-        
         const extraLevels = Math.floor(extraPoints / pointsPerInfiniteLevel);
         currentLvl = lastDefined.lvl + extraLevels;
-        
         prevThreshold = lastDefined.req + (extraLevels * pointsPerInfiniteLevel);
         nextThreshold = prevThreshold + pointsPerInfiniteLevel;
     }
@@ -395,9 +383,8 @@ function activateGrace() {
     if (UserProfile.graceUsed >= SYSTEM_CONFIG.graceCap) return false;
     
     UserProfile.graceUsed += 1;
-    UserProfile.lastWorkout = new Date().toISOString(); // Protects streak buffer
+    UserProfile.lastWorkout = new Date().toISOString(); 
     
-    // Log Grace
     UserProfile.systemLogs.push({
         text: "[GRACE PROTOCOL] Streak Paused",
         date: new Date().toISOString(),
@@ -423,15 +410,22 @@ function loadData(key, fallback) {
     return stored ? JSON.parse(stored) : fallback;
 }
 
+// --- MODIFIED SAVE SYSTEM (HYBRID CLOUD) ---
 function saveSystemData() {
+    // 1. Save Locally (Primary)
     localStorage.setItem(STORAGE_KEY_LOGS, JSON.stringify(historyLogs));
     localStorage.setItem(STORAGE_KEY_GOALS, JSON.stringify(goals));
     localStorage.setItem(STORAGE_KEY_GALLERY, JSON.stringify(galleryPosts));
     localStorage.setItem(STORAGE_KEY_USER, JSON.stringify(UserProfile));
-    console.log("System Saved.");
+    
+    console.log("System Saved (Local).");
+
+    // 2. Trigger Cloud Sync (Silent)
+    if (window.syncToCloud) {
+        window.syncToCloud();
+    }
 }
 
-// Legacy Time Travel Helper (Kept for Gallery)
 function getStatsForDate(targetDateStr) {
     const sortedLogs = [...historyLogs].sort((a, b) => new Date(a.date) - new Date(b.date));
     let foundStats = { Weight: "--", BMI: "--" };
@@ -451,16 +445,13 @@ function getStatsForDate(targetDateStr) {
 }
 
 // --- 7. PWA SYSTEM INITIALIZATION ---
-// Registers the Service Worker and connects the Manifest
 
 if ('serviceWorker' in navigator) {
-    // 1. Inject the Manifest Link dynamically into the <head>
     const link = document.createElement('link');
     link.rel = 'manifest';
     link.href = 'manifest.json';
     document.head.appendChild(link);
 
-    // 2. Register the Worker
     window.addEventListener('load', () => {
         navigator.serviceWorker.register('./sw.js').then((reg) => {
             console.log('LifeHub Service Worker Registered: ', reg.scope);
@@ -469,3 +460,71 @@ if ('serviceWorker' in navigator) {
         });
     });
 }
+
+// --- 8. FIREBASE SATELLITE DISH (The Cloud Bridge) ---
+
+(function initFirebase() {
+    // A. Configuration
+    const firebaseConfig = {
+      apiKey: "AIzaSyAOgtrNsZFu0LaKW7uzHc61kBCNcBc2XSE",
+      authDomain: "fitness-centre-aabaa.firebaseapp.com",
+      projectId: "fitness-centre-aabaa",
+      storageBucket: "fitness-centre-aabaa.firebasestorage.app",
+      messagingSenderId: "706584906698",
+      appId: "1:706584906698:web:0469958c2564db64775d33",
+      measurementId: "G-V0VYYB9GMP"
+    };
+
+    // B. Dynamically Load Firebase SDKs
+    const scriptApp = document.createElement('script');
+    scriptApp.src = "https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js";
+    
+    const scriptDB = document.createElement('script');
+    scriptDB.src = "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js";
+
+    document.head.appendChild(scriptApp);
+    
+    // Wait for App to load, then load DB
+    scriptApp.onload = () => {
+        document.head.appendChild(scriptDB);
+        
+        scriptDB.onload = () => {
+            // C. Initialize Firebase
+            try {
+                const app = firebase.initializeApp(firebaseConfig);
+                const db = firebase.firestore();
+                console.log("CLOUD PROTOCOL: Online");
+
+                // D. Create the Sync Function (Global)
+                window.syncToCloud = function() {
+                    const templates = localStorage.getItem('lh_templates') || "[]";
+                    
+                    // The Big Data Packet
+                    const payload = {
+                        userProfile: UserProfile,
+                        measurements: historyLogs,
+                        goals: goals,
+                        gallery: galleryPosts,
+                        templates: JSON.parse(templates), // Send raw template DB
+                        lastSync: new Date().toISOString()
+                    };
+
+                    // Send to Cloud (Collection: LifeHub_Backups, Doc: Jen_Data)
+                    db.collection("LifeHub_Backups").doc("Jen_Data").set(payload)
+                    .then(() => {
+                        console.log("☁️ CLOUD SYNC: Success");
+                    })
+                    .catch((error) => {
+                        console.warn("☁️ CLOUD SYNC: Failed (Offline?)", error);
+                    });
+                };
+                
+                // Try one initial sync on load
+                window.syncToCloud();
+
+            } catch (e) {
+                console.error("Firebase Init Error:", e);
+            }
+        };
+    };
+})();
