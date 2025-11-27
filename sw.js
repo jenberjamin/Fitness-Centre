@@ -12,7 +12,6 @@ const filesToCache = [
     './fitness-centre-exercise_index.html',
     './index.html',
     './manifest.json',
-    './sw.js',
     './js/core.js'
 ];
 
@@ -50,3 +49,4 @@ self.addEventListener('activate', (e) => {
     );
 
 });
+
