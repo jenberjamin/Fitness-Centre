@@ -1,7 +1,6 @@
 const CACHE_NAME = 'lifehub-v1-core';
 const filesToCache = [
     './',
-    './LifeHub.html',
     './FITNESS-CENTRE.html',
     './fitness-centre-training_deck.html',
     './fitness-centre-active_session.html',
@@ -11,6 +10,9 @@ const filesToCache = [
     './fitness-centre-calendar.html',
     './fitness-centre-history_log.html',
     './fitness-centre-exercise_index.html',
+    './index.html',
+    './manifest.json',
+    './sw.js',
     './js/core.js'
 ];
 
@@ -46,4 +48,5 @@ self.addEventListener('activate', (e) => {
             }));
         })
     );
+
 });
